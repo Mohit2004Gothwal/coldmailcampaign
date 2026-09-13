@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Catch-All Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('lastLoginAt' in data) || (data.lastLoginAt is string && data.lastLoginAt.size() <= 64));
+    }
+
+    function isValidSentMail(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.subject is string && data.subject.size() <= 512
+        && data.body is string && data.body.size() <= 25000
+        && data.timestamp is string && data.timestamp.size() <= 64
+        && (!('isGmailSkipped' in data) || data.isGmailSkipped is bool)
+        && (!('resumeName' in data) || (data.resumeName is string && data.resumeName.size() <= 256))
+        && (!('transcriptName' in data) || (data.transcriptName is string && data.transcriptName.size() <= 256));
+    }
+
+    function isValidCampaignSetting(data) {
+      return data.userId is string && data.userId.size() <= 128
+        && data.subject is string && data.subject.size() <= 512
+        && data.body is string && data.body.size() <= 25000
+        && (!('pendingEmails' in data) || (data.pendingEmails is list && data.pendingEmails.size() <= 500))
+        && (!('dontSendToGmail' in data) || data.dontSendToGmail is bool)
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // User root profile
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId;
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().userId == userId && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId);
+
+      // Sent emails subcollection
+      match /sent_mails/{mailId} {
+        allow get: if isOwner(userId) && isValidId(mailId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(mailId) && incoming().userId == userId && isValidSentMail(incoming());
+        allow update: if false; // Immutable audit log
+        allow delete: if isOwner(userId) && isValidId(mailId);
+      }
+
+      // Settings subcollection
+      match /settings/{settingId} {
+        allow get: if isOwner(userId) && isValidId(settingId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(settingId) && incoming().userId == userId && isValidCampaignSetting(incoming());
+        allow update: if isOwner(userId) && isValidId(settingId) && incoming().userId == userId && isValidCampaignSetting(incoming());
+        allow delete: if isOwner(userId) && isValidId(settingId);
+      }
+    }
+  }
+}

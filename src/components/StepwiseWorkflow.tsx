@@ -231,6 +231,10 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
           onMailSent={onMailSent}
           totalSentCount={totalSentCount}
           theme={theme}
+          initialSubject={subject}
+          initialBody={htmlBody}
+          initialSkipGmail={skipGmail}
+          initialRecipientsText={rawRecipients}
         />
       ) : (
         /* Stepwise Wizard View */
@@ -854,6 +858,10 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
                   onMailSent={onMailSent}
                   totalSentCount={totalSentCount}
                   theme={theme}
+                  initialSubject={subject}
+                  initialBody={htmlBody}
+                  initialSkipGmail={skipGmail}
+                  initialRecipientsText={rawRecipients}
                 />
               </div>
             )}

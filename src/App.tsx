@@ -1,23 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BulkMailerHeader, BulkTab } from './components/BulkMailerHeader';
 import { StepwiseWorkflow } from './components/StepwiseWorkflow';
 import { SentMailsView, SentMailRecord } from './components/SentMailsView';
 import { PendingMailsView } from './components/PendingMailsView';
 import { AuthModal } from './components/AuthModal';
 import { GmailPermissionModal } from './components/GmailPermissionModal';
+import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 import { SAMPLE_150_EMAILS } from './data/sampleBulkEmails';
+import { DEFAULT_SAMPLE_RESUME } from './data/sampleResume';
 import { EmailAttachment } from './types';
-
-const DEFAULT_SAMPLE_RESUME: EmailAttachment = {
-  id: 'sample-resume-init',
-  type: 'resume',
-  name: 'Alex_Chen_Software_Engineer_Resume.pdf',
-  size: 245760,
-  mimeType: 'application/pdf',
-  base64Data:
-    'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9Db3VudCAxCi9LaWRzIFsgNSAwIFIgXQo+PgplbmRvYmoKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDQgMCBSCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCi9Db250ZW50cyA2IDAgUgovUmVzb3VyY2VzIDw8Ci9Gb250IDw8Ci9GMSA3IDAgUgo+Pgo+Pgo+PgplbmRvYmoKNiAwIG9iago8PAovTGVuZ3RoIDQ0Cj4+CnN0cmVhbQpCVAovRjEgMjQgVGYKNzIgNzIwIFRECihoZWxsbyB3b3JsZCkgVGoKRVQKZW5kc3RyZWFtCmVuZG9iago3IDAgb2JqCjw8Ci9UeXBlIC9Gb250Ci9TdWJ0eXBlIC9UeXBlMQovQmFzZUZvbnQgL0hlbHZldGljYQo+PgplbmRvYmoKMyAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgNCAwIFIKPj4KZW5kb2JqCnhyZWYKMCA4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDE2MSAwMDAwMCBuIAowMDAwMDAwMTczIDAwMDAwIG4gCjAwMDAwMDAxMTYgMDAwMDAgbiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDY4IDAwMDAwIG4gCjAwMDAwMDAyMjUgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSA4Ci9Sb290IDMgMCBSCj4+CnN0YXJ0eHJlZgoyODIKJSVFT0YK',
-  uploadedAt: 'Default verified',
-};
+import {
+  auth,
+  db,
+  testConnection,
+  onAuthStateChanged,
+  syncUserProfile,
+  saveSentMailToFirestore,
+  clearAllSentMailsFromFirestore,
+  saveCampaignSettingToFirestore,
+  signOut,
+} from './firebase';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 
 export default function App() {
   // Theme state: dark vs light mode
@@ -44,16 +47,25 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<BulkTab>('workflow');
 
   // Authentication State
-  // Preserving user email and account credentials
+  // Defaulting to requested real testing email: iit2022032@iiitl.ac.in
   const [userEmail, setUserEmail] = useState<string>(() => {
     return localStorage.getItem('bm_user_email') || 'iit2022032@iiitl.ac.in';
   });
+  const [userId, setUserId] = useState<string>(() => {
+    const saved = localStorage.getItem('bm_user_id');
+    if (saved) return saved;
+    const initialEmail = localStorage.getItem('bm_user_email') || 'iit2022032@iiitl.ac.in';
+    return `usr_${initialEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  });
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
   const [isGmailGranted, setIsGmailGranted] = useState<boolean>(true);
+  const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isGmailModalOpen, setIsGmailModalOpen] = useState<boolean>(false);
+  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState<boolean>(false);
 
   // Documents & Attachments (Resume is mandatory, Transcript is optional)
   const [resume, setResume] = useState<EmailAttachment | null>(DEFAULT_SAMPLE_RESUME);
@@ -69,7 +81,6 @@ export default function App() {
         // fallback
       }
     }
-    // Default with sample emails
     return SAMPLE_150_EMAILS.slice(0, 150);
   });
 
@@ -86,32 +97,118 @@ export default function App() {
     return [];
   });
 
-  // Sync state to local storage
+  // Firebase connection and Auth subscription
+  useEffect(() => {
+    testConnection().then((connected) => {
+      setFirebaseConnected(connected);
+    });
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+      if (user) {
+        setUserEmail(user.email || 'user@example.com');
+        setUserId(user.uid);
+        setIsLoggedIn(true);
+        syncUserProfile(user).catch((err) => {
+          console.warn('User profile sync note:', err);
+        });
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Sync state to local storage & Firestore settings
   useEffect(() => {
     localStorage.setItem('bm_user_email', userEmail);
-  }, [userEmail]);
+    localStorage.setItem('bm_user_id', userId);
+  }, [userEmail, userId]);
 
   useEffect(() => {
     localStorage.setItem('bm_pending_emails', JSON.stringify(pendingEmails));
-  }, [pendingEmails]);
+    // Persist to Firestore settings strictly when user is authenticated with Firebase
+    if (firebaseUser && userId && firebaseUser.uid === userId) {
+      saveCampaignSettingToFirestore(userId, {
+        subject: 'Inquiry / Application',
+        body: 'Default outreach template',
+        pendingEmails: pendingEmails.slice(0, 300),
+        dontSendToGmail: true,
+      }).catch((err) => console.log('Firestore settings auto-save note:', err.message));
+    }
+  }, [pendingEmails, userId, firebaseUser]);
 
   useEffect(() => {
     localStorage.setItem('bm_sent_mails', JSON.stringify(sentMails));
   }, [sentMails]);
 
+  // Firestore Real-time Listener for sent emails
+  useEffect(() => {
+    // Only attach onSnapshot listeners if auth is ready and user is authenticated
+    if (!firebaseUser || !userId || firebaseUser.uid !== userId) return;
+
+    try {
+      const sentColRef = collection(db, 'users', userId, 'sent_mails');
+      const unsubscribeSent = onSnapshot(
+        sentColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const firestoreRecords: SentMailRecord[] = [];
+            snapshot.forEach((docSnap) => {
+              const d = docSnap.data();
+              firestoreRecords.push({
+                id: docSnap.id,
+                email: d.email,
+                subject: d.subject,
+                body: d.body,
+                timestamp: d.timestamp,
+                isGmailSkipped: !!d.isGmailSkipped,
+                resumeName: d.resumeName,
+                transcriptName: d.transcriptName,
+              });
+            });
+            // Merge with local records, removing duplicates by id
+            setSentMails((prev) => {
+              const map = new Map<string, SentMailRecord>();
+              [...firestoreRecords, ...prev].forEach((m) => {
+                if (!map.has(m.id)) map.set(m.id, m);
+              });
+              return Array.from(map.values());
+            });
+          }
+        },
+        (error) => {
+          console.warn('Firestore sent_mails snapshot note:', error.message);
+        }
+      );
+
+      return () => unsubscribeSent();
+    } catch (e) {
+      console.warn('Firestore listener setup note:', e);
+    }
+  }, [firebaseUser, userId]);
+
   // Auth Handlers
-  const handleLogin = (email: string) => {
+  const handleLogin = (email: string, displayName?: string, uid?: string) => {
     setUserEmail(email);
+    const newUid = uid || auth.currentUser?.uid || `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    setUserId(newUid);
     setIsLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Signout note:', e);
+    }
+    setFirebaseUser(null);
     setIsLoggedIn(false);
     setUserEmail('');
+    setUserId('');
     setIsAuthModalOpen(true);
   };
 
-  // Mail Sent Handler
+  // Mail Sent Handler: Stores locally AND pushes to Firestore
   const handleMailSent = (mail: {
     email: string;
     subject: string;
@@ -129,12 +226,34 @@ export default function App() {
       resumeName: resume?.name,
       transcriptName: transcript?.name,
     };
+
     setSentMails((prev) => [newRecord, ...prev]);
+
+    // Save to Firestore audit collection if user is authenticated with Firebase
+    if (userId && firebaseUser && firebaseUser.uid === userId) {
+      saveSentMailToFirestore(userId, {
+        id: newRecord.id,
+        email: newRecord.email,
+        subject: newRecord.subject,
+        body: newRecord.body,
+        timestamp: newRecord.timestamp,
+        isGmailSkipped: newRecord.isGmailSkipped,
+        resumeName: newRecord.resumeName,
+        transcriptName: newRecord.transcriptName,
+      }).catch((err) => {
+        console.warn('Could not write sent mail to Firestore:', err.message);
+      });
+    }
   };
 
   const handleClearSentMails = () => {
     if (confirm('Are you sure you want to clear all sent email logs?')) {
       setSentMails([]);
+      if (userId && firebaseUser && firebaseUser.uid === userId) {
+        clearAllSentMailsFromFirestore(userId).catch((err) => {
+          console.warn('Could not clear Firestore logs:', err.message);
+        });
+      }
     }
   };
 
@@ -158,6 +277,9 @@ export default function App() {
         onToggleTheme={toggleTheme}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onLogout={handleLogout}
+        firebaseConnected={firebaseConnected}
+        isFirebaseUser={!!firebaseUser}
+        onOpenFirebaseConfig={() => setIsFirebaseModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -218,6 +340,15 @@ export default function App() {
         isGranted={isGmailGranted}
         onToggleGrant={setIsGmailGranted}
       />
+
+      {/* Firebase & Firestore Database Configuration Modal */}
+      <FirebaseConfigModal
+        isOpen={isFirebaseModalOpen}
+        onClose={() => setIsFirebaseModalOpen(false)}
+        theme={theme}
+        userEmail={userEmail}
+      />
     </div>
   );
 }
+

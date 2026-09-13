@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile document storing basic user account metadata.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User UID from Firebase Authentication",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name or email prefix",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account initialization timestamp",
+          "maxLength": 64
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Latest sign-in timestamp",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "SentMail": {
+      "title": "SentMail",
+      "description": "Outbound email log dispatched through cold mail automator.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique record identifier",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Recipient email address",
+          "maxLength": 256
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject line sent to recipient",
+          "maxLength": 512
+        },
+        "body": {
+          "type": "string",
+          "description": "Email body content",
+          "maxLength": 20000
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Human readable dispatched timestamp",
+          "maxLength": 64
+        },
+        "isGmailSkipped": {
+          "type": "boolean",
+          "description": "Whether real sending was bypassed per Gmail safeguard"
+        },
+        "resumeName": {
+          "type": "string",
+          "description": "Attached resume filename",
+          "maxLength": 256
+        },
+        "transcriptName": {
+          "type": "string",
+          "description": "Attached transcript filename",
+          "maxLength": 256
+        }
+      },
+      "required": ["id", "userId", "email", "subject", "body", "timestamp"]
+    },
+    "CampaignSetting": {
+      "title": "CampaignSetting",
+      "description": "Saved campaign templates, subject, and pending recipient list.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID",
+          "maxLength": 128
+        },
+        "subject": {
+          "type": "string",
+          "description": "Draft or default cold email subject",
+          "maxLength": 512
+        },
+        "body": {
+          "type": "string",
+          "description": "Draft or default HTML cold email body",
+          "maxLength": 20000
+        },
+        "pendingEmails": {
+          "type": "array",
+          "description": "Queued email recipients list",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "dontSendToGmail": {
+          "type": "boolean",
+          "description": "Skip sending real email to @gmail.com domains"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated timestamp",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "subject", "body"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private profile document for each authenticated user"
+    },
+    "/users/{userId}/sent_mails/{mailId}": {
+      "schema": "SentMail",
+      "description": "Subcollection containing sent cold email audit logs"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "CampaignSetting",
+      "description": "Saved templates and queued recipients for each user"
+    }
+  }
+}

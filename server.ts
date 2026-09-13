@@ -269,31 +269,49 @@ ${text}`;
 // 6. SMTP Verification
 app.post('/api/smtp/verify', async (req, res) => {
   const { host, port, secure, user, pass } = req.body;
+  const cleanPass = pass ? String(pass).replace(/\s+/g, '') : '';
 
-  if (!host || !user || !pass) {
+  if (!host || !user || !cleanPass) {
     return res.status(400).json({ success: false, error: 'Host, username, and password are required' });
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host,
-      port: Number(port) || 587,
-      secure: Boolean(secure),
-      auth: { user, pass },
-      connectionTimeout: 8000,
-    });
+    const isGmail = host === 'smtp.gmail.com' || host.includes('gmail');
+    const transporter = isGmail
+      ? nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user, pass: cleanPass },
+          connectionTimeout: 10000,
+        })
+      : nodemailer.createTransport({
+          host,
+          port: Number(port) || 587,
+          secure: Boolean(secure) || Number(port) === 465,
+          auth: { user, pass: cleanPass },
+          connectionTimeout: 10000,
+        });
 
     await transporter.verify();
-    res.json({ success: true, message: 'SMTP connection verified successfully!' });
+    res.json({ success: true, message: 'SMTP connection verified successfully! Mailbox is ready to send live emails.' });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Connection failed';
-    res.json({ success: false, error: message });
+    let hint = message;
+    if (
+      message.includes('535') ||
+      message.includes('BadCredentials') ||
+      message.includes('Username and Password not accepted') ||
+      message.includes('Invalid login')
+    ) {
+      hint =
+        'Authentication failed (535). For Gmail/Google Workspace, you must generate a 16-character App Password at https://myaccount.google.com/apppasswords (requires 2-Step Verification enabled). Normal account passwords are not accepted.';
+    }
+    res.json({ success: false, error: hint });
   }
 });
 
 // 7. Dispatch Email (Real SMTP or Sandboxed / Simulated)
 app.post('/api/smtp/send', async (req, res) => {
-  const { smtpConfig, email, isSimulated = true } = req.body;
+  const { smtpConfig, email, isSimulated = false } = req.body;
 
   const { to, subject, body, fromName, fromEmail, replyTo, attachments } = email || {};
 
@@ -312,46 +330,85 @@ app.post('/api/smtp/send', async (req, res) => {
         }))
     : [];
 
-  // If real SMTP is configured and user opted out of simulation
-  if (!isSimulated && smtpConfig?.host && smtpConfig?.user && smtpConfig?.pass) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: smtpConfig.host,
-        port: Number(smtpConfig.port) || 587,
-        secure: Boolean(smtpConfig.secure),
-        auth: {
-          user: smtpConfig.user,
-          pass: smtpConfig.pass,
-        },
+  // If real delivery is requested (!isSimulated)
+  if (!isSimulated) {
+    // Resolve credentials from payload or environment variables
+    const host = smtpConfig?.host || process.env.SMTP_HOST || (smtpConfig?.user?.endsWith('@gmail.com') ? 'smtp.gmail.com' : '');
+    const port = Number(smtpConfig?.port || process.env.SMTP_PORT) || 465;
+    const user = smtpConfig?.user || process.env.SMTP_USER || '';
+    const rawPass = smtpConfig?.pass || process.env.SMTP_PASS || '';
+    const cleanPass = rawPass ? String(rawPass).replace(/\s+/g, '') : '';
+    const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : port === 465;
+
+    // If credentials are completely missing, warn user clearly instead of silently simulating
+    if (!host || !user || !cleanPass) {
+      return res.status(400).json({
+        success: false,
+        requiresConfig: true,
+        error:
+          'Live email delivery requires SMTP credentials (e.g. Gmail App Password). Please configure your SMTP in Delivery Settings (or click Configure SMTP), or toggle to Sandbox Simulation mode.',
       });
+    }
+
+    try {
+      const isGmail = host === 'smtp.gmail.com' || host.includes('gmail');
+      const transporter = isGmail
+        ? nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user, pass: cleanPass },
+            connectionTimeout: 12000,
+          })
+        : nodemailer.createTransport({
+            host,
+            port,
+            secure,
+            auth: { user, pass: cleanPass },
+            connectionTimeout: 12000,
+          });
 
       const isHtml = /<[a-z][\s\S]*>/i.test(body);
+      const effectiveSender = user || fromEmail || process.env.SMTP_FROM_EMAIL || 'me';
+      const senderName = fromName || smtpConfig?.fromName || process.env.SMTP_FROM_NAME || 'Cold Mail Automator';
+
       const info = await transporter.sendMail({
-        from: `"${fromName || smtpConfig.fromName || 'Outreach'}" <${fromEmail || smtpConfig.fromEmail || smtpConfig.user}>`,
+        from: `"${senderName}" <${effectiveSender}>`,
         to,
-        replyTo: replyTo || fromEmail || smtpConfig.replyTo,
+        replyTo: replyTo || fromEmail || effectiveSender,
         subject,
         text: isHtml ? body.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim() : body,
         html: isHtml ? body : undefined,
         attachments: mailAttachments,
       });
 
+      console.info(`[Real Email Delivered] to: ${to}, id: ${info.messageId}`);
+
       return res.json({
         success: true,
         isSimulated: false,
         messageId: info.messageId,
         response: info.response,
+        deliveredAt: new Date().toISOString(),
+        status: 'delivered',
         attachmentsCount: mailAttachments.length,
       });
     } catch (error: unknown) {
       console.error('SMTP Send Error:', error);
-      const message = error instanceof Error ? error.message : 'SMTP delivery failed';
-      return res.status(500).json({ success: false, error: message });
+      const rawMessage = error instanceof Error ? error.message : 'SMTP delivery failed';
+      let friendlyError = rawMessage;
+      if (
+        rawMessage.includes('535') ||
+        rawMessage.includes('BadCredentials') ||
+        rawMessage.includes('Username and Password not accepted') ||
+        rawMessage.includes('Invalid login')
+      ) {
+        friendlyError =
+          'Google SMTP error (535): Invalid password. For Gmail, Google requires a 16-character App Password (generate at https://myaccount.google.com/apppasswords with 2-Step Verification enabled).';
+      }
+      return res.status(500).json({ success: false, error: friendlyError });
     }
   }
 
   // Sandbox / Simulated send mode
-  // Generates realistic delivery event
   const simulatedId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   return res.json({
     success: true,
