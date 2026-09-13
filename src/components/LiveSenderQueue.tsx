@@ -16,7 +16,7 @@ import {
   CornerDownRight,
   ExternalLink,
 } from 'lucide-react';
-import { Campaign, Lead, EmailLogEntry, SequenceStep, SmtpConfig } from '../types';
+import { Campaign, Lead, EmailLogEntry, SequenceStep, SmtpConfig, EmailAttachment } from '../types';
 import { renderTemplate } from '../utils/templateEngine';
 
 interface LiveSenderQueueProps {
@@ -26,9 +26,12 @@ interface LiveSenderQueueProps {
   emailLogs: EmailLogEntry[];
   smtpConfig: SmtpConfig;
   isSimulatedMode: boolean;
+  resume: EmailAttachment | null;
+  transcript: EmailAttachment | null;
   onUpdateLeads: (leads: Lead[]) => void;
   onAddEmailLog: (log: EmailLogEntry) => void;
   onToggleCampaignStatus: () => void;
+  onNavigateToAttachments?: () => void;
 }
 
 export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
@@ -38,9 +41,12 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
   emailLogs,
   smtpConfig,
   isSimulatedMode,
+  resume,
+  transcript,
   onUpdateLeads,
   onAddEmailLog,
   onToggleCampaignStatus,
+  onNavigateToAttachments,
 }) => {
   const [isSendingBatch, setIsSendingBatch] = useState(false);
   const [selectedLog, setSelectedLog] = useState<EmailLogEntry | null>(null);
@@ -58,11 +64,23 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
 
   // Single lead email dispatcher
   const dispatchEmailForLead = async (lead: Lead, stepIndex: number): Promise<boolean> => {
+    // Validate mandatory resume
+    if (!resume) {
+      alert('Resume PDF is mandatory! Please upload your resume PDF in the Attachments division before sending.');
+      if (onNavigateToAttachments) onNavigateToAttachments();
+      return false;
+    }
+
     const step = steps[stepIndex];
     if (!step || !step.isActive) return false;
 
     const renderedSubject = renderTemplate(step.subject, lead);
     const renderedBody = renderTemplate(step.body, lead);
+
+    const attachmentsList = [
+      ...(resume ? [resume] : []),
+      ...(transcript ? [transcript] : []),
+    ];
 
     try {
       const res = await fetch('/api/smtp/send', {
@@ -76,6 +94,7 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
             body: renderedBody,
             fromName: smtpConfig.fromName || 'Campaign Team',
             fromEmail: smtpConfig.fromEmail || smtpConfig.user || 'outreach@domain.com',
+            attachments: attachmentsList,
           },
           isSimulated: isSimulatedMode,
         }),
@@ -97,6 +116,11 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
           status: 'delivered',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           isSimulated: data.isSimulated ?? isSimulatedMode,
+          attachments: {
+            hasResume: Boolean(resume),
+            hasTranscript: Boolean(transcript),
+            names: attachmentsList.map((a) => a.name),
+          },
         };
 
         onAddEmailLog(logEntry);
@@ -136,6 +160,13 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
   // Dispatch next eligible batch of leads
   const handleSendNextBatch = async () => {
     if (isSendingBatch) return;
+
+    if (!resume) {
+      alert('Resume PDF is mandatory! Please upload your resume PDF in the Attachments division before sending.');
+      if (onNavigateToAttachments) onNavigateToAttachments();
+      return;
+    }
+
     setIsSendingBatch(true);
 
     // Candidates: Pending leads (need Step 1) or in-sequence leads ready for next step
@@ -234,6 +265,39 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Campaign Runner Control Strip */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+        {/* Attachment Readiness Warning / Badge */}
+        <div className="mb-4 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-slate-700">Outbound Credentials:</span>
+            {resume ? (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Resume: {resume.name} (Ready)</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-bold animate-pulse">
+                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                <span>Resume PDF Missing (Mandatory)</span>
+              </span>
+            )}
+
+            {transcript && (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-medium">
+                <span>Transcript: {transcript.name}</span>
+              </span>
+            )}
+          </div>
+
+          {onNavigateToAttachments && !resume && (
+            <button
+              onClick={onNavigateToAttachments}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 underline self-start sm:self-auto"
+            >
+              Upload Resume Now →
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2">
@@ -503,6 +567,14 @@ export const LiveSenderQueue: React.FC<LiveSenderQueueProps> = ({
                   {selectedLog.isSimulated ? 'Sandbox Test Dispatch' : 'Live Outbound SMTP'}
                 </span>
               </div>
+              {selectedLog.attachments?.names && selectedLog.attachments.names.length > 0 && (
+                <div className="flex justify-between pt-1 border-t border-slate-200/60">
+                  <span className="text-slate-500">Attachments:</span>
+                  <span className="text-slate-800 font-semibold flex items-center gap-1">
+                    📎 {selectedLog.attachments.names.join(', ')}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mb-3">

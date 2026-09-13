@@ -84,5 +84,31 @@ export const DEFAULT_TEMPLATES: CampaignTemplate[] = [
         body: `Hi {{firstName}},\n\nWe're finalizing our speaker roster by end of week.\n\nIf this isn't the right fit or timing for {{company}}, totally understand! If someone else on your team handles brand partnerships, could you point me in their direction?\n\nThanks, {{firstName}}!`
       }
     ]
+  },
+  {
+    id: 'career_internship',
+    title: 'Job / Internship & Research Outreach (3 Steps)',
+    category: 'recruiting',
+    description: 'Targeted cold email for job seekers, interns, or researchers reaching out to hiring managers and lab leads.',
+    steps: [
+      {
+        stepNumber: 1,
+        delayDays: 0,
+        subject: '{Role inquiry / interest in {{company}}|Excited about {{company}}\'s team}',
+        body: `Dear {{firstName}},\n\n{{customIcebreaker|I have been closely following {{company}}'s impressive work in the space.}}\n\nI am writing to express my strong interest in opportunities on your team at {{company}} as a {{jobTitle|Software Engineer / Researcher}}.\n\nI have attached my Resume (PDF) detailing my technical projects, work experience, and coursework. If relevant, my academic transcript is also attached for your review.\n\nWould you have 10 minutes for a brief introductory conversation or advice on opportunities at {{company}}?`
+      },
+      {
+        stepNumber: 2,
+        delayDays: 4,
+        subject: 'Re: {Role inquiry / interest in {{company}}|Excited about {{company}}\'s team}',
+        body: `Hi {{firstName}},\n\nI wanted to gently follow up on my previous note regarding potential openings at {{company}}.\n\nI remain very enthusiastic about your team's mission. Please let me know if you would like any additional details or code samples beyond the attached resume.\n\nThank you for your time and consideration!`
+      },
+      {
+        stepNumber: 3,
+        delayDays: 5,
+        subject: 'Re: Inquiry regarding {{company}} team',
+        body: `Dear {{firstName}},\n\nI realize you are very busy with high priorities, so I will not crowd your inbox further.\n\nIf any relevant roles or project collaborations open up at {{company}} in the future, please feel free to keep my attached resume on file.\n\nWishing you and the team continued success!`
+      }
+    ]
   }
 ];

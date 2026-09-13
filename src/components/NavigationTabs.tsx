@@ -1,7 +1,7 @@
 import React from 'react';
-import { GitCommit, Users, Radio, BarChart3 } from 'lucide-react';
+import { GitCommit, Users, Radio, BarChart3, Paperclip, AlertCircle, CheckCircle2 } from 'lucide-react';
 
-export type ActiveTab = 'sequence' | 'prospects' | 'execution' | 'analytics';
+export type ActiveTab = 'attachments' | 'sequence' | 'prospects' | 'execution' | 'analytics';
 
 interface NavigationTabsProps {
   activeTab: ActiveTab;
@@ -9,6 +9,8 @@ interface NavigationTabsProps {
   leadCount: number;
   inSequenceCount: number;
   emailLogCount: number;
+  hasResume: boolean;
+  hasTranscript: boolean;
 }
 
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
@@ -17,23 +19,36 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   leadCount,
   inSequenceCount,
   emailLogCount,
+  hasResume,
+  hasTranscript,
 }) => {
   const tabs = [
     {
-      id: 'sequence' as ActiveTab,
-      label: 'Sequence & Templates',
-      icon: GitCommit,
-      badge: null,
+      id: 'attachments' as ActiveTab,
+      label: 'Resume & Documents',
+      icon: Paperclip,
+      badge: hasResume ? 'Resume ✓' : 'Resume Required ⚠️',
+      badgeHighlight: !hasResume,
+      badgeWarning: !hasResume,
+      badgeSuccess: hasResume,
     },
     {
       id: 'prospects' as ActiveTab,
-      label: 'Prospects & Leads',
+      label: 'Add Emails & Leads',
       icon: Users,
-      badge: leadCount,
+      badge: `${leadCount} emails`,
+      badgeHighlight: false,
+    },
+    {
+      id: 'sequence' as ActiveTab,
+      label: 'Templates & Sequence',
+      icon: GitCommit,
+      badge: null,
+      badgeHighlight: false,
     },
     {
       id: 'execution' as ActiveTab,
-      label: 'Queue & Live Logs',
+      label: 'Queue & Live Sender',
       icon: Radio,
       badge: inSequenceCount > 0 ? `${inSequenceCount} active` : emailLogCount > 0 ? `${emailLogCount} sent` : null,
       badgeHighlight: inSequenceCount > 0,
@@ -43,6 +58,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       label: 'Performance & Funnel',
       icon: BarChart3,
       badge: null,
+      badgeHighlight: false,
     },
   ];
 
@@ -68,8 +84,12 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 <span>{tab.label}</span>
                 {tab.badge !== null && (
                   <span
-                    className={`ml-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                      tab.badgeHighlight
+                    className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                      tab.badgeWarning
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : tab.badgeSuccess
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : tab.badgeHighlight
                         ? 'bg-emerald-100 text-emerald-800 animate-pulse'
                         : isActive
                         ? 'bg-blue-200/70 text-blue-800'

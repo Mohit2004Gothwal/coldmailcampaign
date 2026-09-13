@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // Lazy initialization of Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -295,11 +295,22 @@ app.post('/api/smtp/verify', async (req, res) => {
 app.post('/api/smtp/send', async (req, res) => {
   const { smtpConfig, email, isSimulated = true } = req.body;
 
-  const { to, subject, body, fromName, fromEmail, replyTo } = email || {};
+  const { to, subject, body, fromName, fromEmail, replyTo, attachments } = email || {};
 
   if (!to || !subject || !body) {
     return res.status(400).json({ success: false, error: 'Recipient, subject, and body are required.' });
   }
+
+  // Format attachments for Nodemailer
+  const mailAttachments = Array.isArray(attachments)
+    ? attachments
+        .filter((att) => att && (att.base64Data || att.content))
+        .map((att) => ({
+          filename: att.name || 'document.pdf',
+          content: att.base64Data ? Buffer.from(att.base64Data, 'base64') : att.content,
+          contentType: att.mimeType || 'application/pdf',
+        }))
+    : [];
 
   // If real SMTP is configured and user opted out of simulation
   if (!isSimulated && smtpConfig?.host && smtpConfig?.user && smtpConfig?.pass) {
@@ -314,12 +325,15 @@ app.post('/api/smtp/send', async (req, res) => {
         },
       });
 
+      const isHtml = /<[a-z][\s\S]*>/i.test(body);
       const info = await transporter.sendMail({
         from: `"${fromName || smtpConfig.fromName || 'Outreach'}" <${fromEmail || smtpConfig.fromEmail || smtpConfig.user}>`,
         to,
         replyTo: replyTo || fromEmail || smtpConfig.replyTo,
         subject,
-        text: body,
+        text: isHtml ? body.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim() : body,
+        html: isHtml ? body : undefined,
+        attachments: mailAttachments,
       });
 
       return res.json({
@@ -327,6 +341,7 @@ app.post('/api/smtp/send', async (req, res) => {
         isSimulated: false,
         messageId: info.messageId,
         response: info.response,
+        attachmentsCount: mailAttachments.length,
       });
     } catch (error: unknown) {
       console.error('SMTP Send Error:', error);
@@ -344,6 +359,7 @@ app.post('/api/smtp/send', async (req, res) => {
     messageId: simulatedId,
     deliveredAt: new Date().toISOString(),
     status: 'delivered',
+    attachmentsCount: mailAttachments.length,
   });
 });
 

@@ -13,7 +13,7 @@ import {
   Info,
   RefreshCw,
 } from 'lucide-react';
-import { SequenceStep, Lead } from '../types';
+import { SequenceStep, Lead, EmailAttachment } from '../types';
 import { renderTemplate, analyzeSpamAndDeliverability } from '../utils/templateEngine';
 
 interface CampaignSequenceEditorProps {
@@ -21,6 +21,8 @@ interface CampaignSequenceEditorProps {
   onUpdateSteps: (steps: SequenceStep[]) => void;
   leads: Lead[];
   onOpenAiModal: () => void;
+  resume?: EmailAttachment | null;
+  transcript?: EmailAttachment | null;
 }
 
 const AVAILABLE_VARIABLES = [
@@ -39,6 +41,8 @@ export const CampaignSequenceEditor: React.FC<CampaignSequenceEditorProps> = ({
   onUpdateSteps,
   leads,
   onOpenAiModal,
+  resume,
+  transcript,
 }) => {
   const [selectedStepId, setSelectedStepId] = useState<string>(steps[0]?.id || '');
   const [previewLeadId, setPreviewLeadId] = useState<string>(leads[0]?.id || '');
@@ -517,6 +521,37 @@ export const CampaignSequenceEditor: React.FC<CampaignSequenceEditorProps> = ({
 
               <div className="p-3.5 bg-white min-h-[160px] text-slate-800 whitespace-pre-wrap font-sans text-xs leading-relaxed selection:bg-blue-100">
                 {renderTemplate(currentStep.body, previewLead)}
+              </div>
+
+              {/* Attachments inside preview */}
+              <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-xs">
+                <div className="flex items-center justify-between text-[11px] mb-1 text-slate-500 font-medium">
+                  <span>Enclosed Attachments:</span>
+                  {resume ? (
+                    <span className="text-emerald-700 font-semibold">Resume verified ✓</span>
+                  ) : (
+                    <span className="text-red-600 font-bold">Resume PDF required ⚠️</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {resume ? (
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-emerald-100/70 border border-emerald-200 text-emerald-800 rounded text-[11px] font-medium">
+                      <span>📄 {resume.name}</span>
+                      <span className="text-[10px] text-emerald-600">(Resume)</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-red-100/70 border border-red-200 text-red-700 rounded text-[11px] font-medium">
+                      <span>⚠️ Resume PDF Missing (Mandatory)</span>
+                    </span>
+                  )}
+
+                  {transcript && (
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-indigo-100/70 border border-indigo-200 text-indigo-800 rounded text-[11px] font-medium">
+                      <span>📄 {transcript.name}</span>
+                      <span className="text-[10px] text-indigo-600">(Transcript)</span>
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">

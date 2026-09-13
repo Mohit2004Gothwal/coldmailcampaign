@@ -14,9 +14,12 @@ import {
   RefreshCw,
   Edit2,
   X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Lead, LeadStatus } from '../types';
 import { DEFAULT_LEADS } from '../data/defaultLeads';
+import { AddOneByOneDivision } from './AddOneByOneDivision';
 
 interface LeadManagerProps {
   leads: Lead[];
@@ -29,6 +32,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leads, onUpdateLeads }
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
   const [isGeneratingIcebreakers, setIsGeneratingIcebreakers] = useState(false);
+  const [showOneByOneDivision, setShowOneByOneDivision] = useState(true);
   const [csvText, setCsvText] = useState('');
   const [newLead, setNewLead] = useState<Partial<Lead>>({
     firstName: '',
@@ -235,19 +239,20 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leads, onUpdateLeads }
             </button>
 
             <button
+              onClick={() => setShowOneByOneDivision(!showOneByOneDivision)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add One by One</span>
+              {showOneByOneDivision ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            <button
               onClick={() => setIsCsvModalOpen(true)}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg border border-slate-300 transition-colors"
             >
               <Upload className="w-3.5 h-3.5 text-slate-600" />
               <span>Import CSV</span>
-            </button>
-
-            <button
-              onClick={() => setIsAddLeadModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add Prospect</span>
             </button>
 
             <button
@@ -291,6 +296,17 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leads, onUpdateLeads }
           </div>
         </div>
       </div>
+
+      {/* Division for Adding Emails One by One */}
+      {showOneByOneDivision && (
+        <div className="mb-6">
+          <AddOneByOneDivision
+            onAddLead={(lead) => onUpdateLeads([...leads, lead])}
+            leads={leads}
+            onRemoveLead={handleDeleteLead}
+          />
+        </div>
+      )}
 
       {/* Leads Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">

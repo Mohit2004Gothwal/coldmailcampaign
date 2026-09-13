@@ -41,6 +41,16 @@ export interface Lead {
   notes?: string;
 }
 
+export interface EmailAttachment {
+  id: string;
+  type: 'resume' | 'transcript' | 'other';
+  name: string;
+  size: number;
+  mimeType: string;
+  base64Data?: string;
+  uploadedAt: string;
+}
+
 export interface EmailLogEntry {
   id: string;
   leadId: string;
@@ -55,6 +65,11 @@ export interface EmailLogEntry {
   timestamp: string;
   isSimulated: boolean;
   errorMessage?: string;
+  attachments?: {
+    hasResume?: boolean;
+    hasTranscript?: boolean;
+    names?: string[];
+  };
 }
 
 export interface SmtpConfig {
@@ -88,6 +103,10 @@ export interface Campaign {
   schedule: CampaignSchedule;
   createdAt: string;
   updatedAt: string;
+  attachments?: {
+    resume?: EmailAttachment | null;
+    transcript?: EmailAttachment | null;
+  };
 }
 
 export interface CampaignTemplate {
