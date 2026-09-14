@@ -21,9 +21,10 @@ import {
   Send,
   Plus,
   Trash2,
+  Settings,
 } from 'lucide-react';
 import { BulkMailComposer, ActivityLog } from './BulkMailComposer';
-import { EmailAttachment } from '../types';
+import { EmailAttachment, SmtpConfig } from '../types';
 import { SAMPLE_150_EMAILS, DEFAULT_SAVED_SUBJECT, DEFAULT_SAVED_BODY } from '../data/sampleBulkEmails';
 import { parseBulkEmails } from '../utils/bulkEmailParser';
 
@@ -50,6 +51,11 @@ interface StepwiseWorkflowProps {
     isGmailSkipped: boolean;
   }) => void;
   totalSentCount: number;
+  smtpConfig?: SmtpConfig;
+  onUpdateSmtpConfig?: (config: SmtpConfig) => void;
+  isSimulatedMode?: boolean;
+  onToggleSimulatedMode?: (isSimulated: boolean) => void;
+  onOpenSettings?: () => void;
 }
 
 export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
@@ -67,6 +73,11 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
   onUpdatePendingEmails,
   onMailSent,
   totalSentCount,
+  smtpConfig,
+  onUpdateSmtpConfig,
+  isSimulatedMode = true,
+  onToggleSimulatedMode,
+  onOpenSettings,
 }) => {
   const isDark = theme === 'dark';
 
@@ -74,11 +85,11 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
   const [viewMode, setViewMode] = useState<'stepwise' | 'all_in_one'>('stepwise');
   const [currentStep, setCurrentStep] = useState<StepKey>('auth');
 
-  // Shared Form State for stepwise steps
-  const [subject, setSubject] = useState(DEFAULT_SAVED_SUBJECT);
-  const [htmlBody, setHtmlBody] = useState(DEFAULT_SAVED_BODY);
+  // Shared Form State for stepwise steps (starts clean/empty, loaded via explicit sample action)
+  const [subject, setSubject] = useState('');
+  const [htmlBody, setHtmlBody] = useState('');
   const [rawRecipients, setRawRecipients] = useState(() => pendingEmails.join('\n'));
-  const [skipGmail, setSkipGmail] = useState(true);
+  const [skipGmail, setSkipGmail] = useState(false);
 
   // Multi-step Sequence configuration inside Step 3
   const [activeSequenceStep, setActiveSequenceStep] = useState<number>(1);
@@ -219,7 +230,7 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
       {/* Render All-In-One Dashboard if selected */}
       {viewMode === 'all_in_one' ? (
         <BulkMailComposer
-          userEmail={userEmail || 'iit2022032@iiitl.ac.in'}
+          userEmail={userEmail}
           isGmailGranted={isGmailGranted}
           onOpenGmailModal={onOpenGmailModal}
           resume={resume}
@@ -235,6 +246,12 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
           initialBody={htmlBody}
           initialSkipGmail={skipGmail}
           initialRecipientsText={rawRecipients}
+          smtpConfig={smtpConfig}
+          onUpdateSmtpConfig={onUpdateSmtpConfig}
+          isSimulatedMode={isSimulatedMode}
+          onToggleSimulatedMode={onToggleSimulatedMode}
+          onOpenSettings={onOpenSettings}
+          onOpenAuth={onOpenAuth}
         />
       ) : (
         /* Stepwise Wizard View */
@@ -389,6 +406,64 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
                     >
                       {isGmailGranted ? 'Manage Permission' : 'Grant Permission'}
                     </button>
+                  </div>
+
+                  {/* SMTP Delivery Engine & Mode status */}
+                  <div
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      !isSimulatedMode && smtpConfig?.user && smtpConfig?.pass
+                        ? isDark
+                          ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-300'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : isDark
+                        ? 'bg-slate-900/80 border-slate-800 text-slate-300'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <Settings className="w-5 h-5 text-blue-500 shrink-0" />
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <p className="text-xs font-bold">
+                            Delivery Channel:{' '}
+                            {isSimulatedMode
+                              ? 'Simulation Sandbox (Safety On)'
+                              : `Real SMTP (${smtpConfig?.host || 'smtp.gmail.com'})`}
+                          </p>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              isSimulatedMode
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}
+                          >
+                            {isSimulatedMode ? 'Sandbox' : 'Live Real Delivery'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] opacity-80 mt-0.5">
+                          {isSimulatedMode
+                            ? 'Emails are validated and logged without actual delivery. Switch to Live SMTP to send to real inboxes.'
+                            : smtpConfig?.user
+                            ? `Authenticated as: ${smtpConfig.user}`
+                            : 'SMTP credentials required for real inbox delivery.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {onOpenSettings && (
+                      <button
+                        type="button"
+                        onClick={onOpenSettings}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 flex items-center space-x-1.5 ${
+                          isDark
+                            ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                            : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+                        }`}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        <span>Configure SMTP</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -663,18 +738,19 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
                     <button
                       type="button"
                       onClick={() => setSubject(DEFAULT_SAVED_SUBJECT)}
-                      className={`text-[11px] font-semibold transition-colors ${
+                      className={`text-[11px] font-semibold transition-colors flex items-center space-x-1 ${
                         isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
                       }`}
                     >
-                      Use previous template
+                      <Sparkles className="w-3 h-3" />
+                      <span>Load Sample Subject</span>
                     </button>
                   </div>
                   <input
                     type="text"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="e.g. SDE 1 / Full Stack Opportunities - Mohit Kumar"
+                    placeholder="Enter email subject line (e.g. SDE 1 / Full Stack Inquiry)..."
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 border ${
                       isDark
                         ? 'bg-slate-900 border-slate-800 text-white placeholder-slate-500'
@@ -692,11 +768,12 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
                     <button
                       type="button"
                       onClick={() => setHtmlBody(DEFAULT_SAVED_BODY)}
-                      className={`text-[11px] font-semibold transition-colors ${
+                      className={`text-[11px] font-semibold transition-colors flex items-center space-x-1 ${
                         isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
                       }`}
                     >
-                      Use previous body
+                      <Sparkles className="w-3 h-3" />
+                      <span>Load Sample Body</span>
                     </button>
                   </div>
                   <textarea
@@ -846,7 +923,7 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
 
                 {/* Embedded Live Composer & Activity Module */}
                 <BulkMailComposer
-                  userEmail={userEmail || 'iit2022032@iiitl.ac.in'}
+                  userEmail={userEmail}
                   isGmailGranted={isGmailGranted}
                   onOpenGmailModal={onOpenGmailModal}
                   resume={resume}
@@ -862,6 +939,12 @@ export const StepwiseWorkflow: React.FC<StepwiseWorkflowProps> = ({
                   initialBody={htmlBody}
                   initialSkipGmail={skipGmail}
                   initialRecipientsText={rawRecipients}
+                  smtpConfig={smtpConfig}
+                  onUpdateSmtpConfig={onUpdateSmtpConfig}
+                  isSimulatedMode={isSimulatedMode}
+                  onToggleSimulatedMode={onToggleSimulatedMode}
+                  onOpenSettings={onOpenSettings}
+                  onOpenAuth={onOpenAuth}
                 />
               </div>
             )}

@@ -6,9 +6,10 @@ import { PendingMailsView } from './components/PendingMailsView';
 import { AuthModal } from './components/AuthModal';
 import { GmailPermissionModal } from './components/GmailPermissionModal';
 import { FirebaseConfigModal } from './components/FirebaseConfigModal';
+import { SettingsModal } from './components/SettingsModal';
 import { SAMPLE_150_EMAILS } from './data/sampleBulkEmails';
 import { DEFAULT_SAMPLE_RESUME } from './data/sampleResume';
-import { EmailAttachment } from './types';
+import { EmailAttachment, SmtpConfig, CampaignSchedule } from './types';
 import {
   auth,
   db,
@@ -47,20 +48,61 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<BulkTab>('workflow');
 
   // Authentication State
-  // Defaulting to requested real testing email: iit2022032@iiitl.ac.in
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('bm_user_email') || 'iit2022032@iiitl.ac.in';
+    return localStorage.getItem('bm_user_email') || '';
   });
   const [userId, setUserId] = useState<string>(() => {
     const saved = localStorage.getItem('bm_user_id');
     if (saved) return saved;
-    const initialEmail = localStorage.getItem('bm_user_email') || 'iit2022032@iiitl.ac.in';
-    return `usr_${initialEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const initialEmail = localStorage.getItem('bm_user_email') || '';
+    return initialEmail ? `usr_${initialEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : '';
   });
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('bm_user_email'));
+  });
   const [isGmailGranted, setIsGmailGranted] = useState<boolean>(true);
   const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
   const [firebaseUser, setFirebaseUser] = useState<any>(null);
+
+  // Delivery & SMTP Configuration State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isSimulatedMode, setIsSimulatedMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('bm_is_simulated');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [smtpConfig, setSmtpConfig] = useState<SmtpConfig>(() => {
+    const saved = localStorage.getItem('bm_smtp_config');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      user: '',
+      pass: '',
+      fromName: 'Cold Mail Outreach',
+      fromEmail: '',
+    };
+  });
+  const [schedule, setSchedule] = useState<CampaignSchedule>(() => {
+    const saved = localStorage.getItem('bm_schedule');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      dailyLimit: 150,
+      minDelaySeconds: 1,
+      maxDelaySeconds: 4,
+      sendWindowStart: '09:00',
+      sendWindowEnd: '18:00',
+      timezone: 'UTC',
+    };
+  });
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -141,6 +183,19 @@ export default function App() {
     localStorage.setItem('bm_sent_mails', JSON.stringify(sentMails));
   }, [sentMails]);
 
+  // Persist Delivery & SMTP Settings
+  useEffect(() => {
+    localStorage.setItem('bm_is_simulated', String(isSimulatedMode));
+  }, [isSimulatedMode]);
+
+  useEffect(() => {
+    localStorage.setItem('bm_smtp_config', JSON.stringify(smtpConfig));
+  }, [smtpConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('bm_schedule', JSON.stringify(schedule));
+  }, [schedule]);
+
   // Firestore Real-time Listener for sent emails
   useEffect(() => {
     // Only attach onSnapshot listeners if auth is ready and user is authenticated
@@ -205,7 +260,9 @@ export default function App() {
     setIsLoggedIn(false);
     setUserEmail('');
     setUserId('');
-    setIsAuthModalOpen(true);
+    localStorage.removeItem('bm_user_email');
+    localStorage.removeItem('bm_user_id');
+    setIsAuthModalOpen(false);
   };
 
   // Mail Sent Handler: Stores locally AND pushes to Firestore
@@ -280,6 +337,9 @@ export default function App() {
         firebaseConnected={firebaseConnected}
         isFirebaseUser={!!firebaseUser}
         onOpenFirebaseConfig={() => setIsFirebaseModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        isLiveDelivery={!isSimulatedMode}
+        isSmtpConfigured={Boolean(smtpConfig.host && smtpConfig.user && smtpConfig.pass)}
       />
 
       {/* Main Content Area */}
@@ -287,7 +347,7 @@ export default function App() {
         {activeTab === 'workflow' && (
           <StepwiseWorkflow
             theme={theme}
-            userEmail={userEmail || 'iit2022032@iiitl.ac.in'}
+            userEmail={userEmail}
             isLoggedIn={isLoggedIn}
             isGmailGranted={isGmailGranted}
             onOpenAuth={() => setIsAuthModalOpen(true)}
@@ -300,6 +360,11 @@ export default function App() {
             onUpdatePendingEmails={setPendingEmails}
             onMailSent={handleMailSent}
             totalSentCount={sentMails.length}
+            smtpConfig={smtpConfig}
+            onUpdateSmtpConfig={setSmtpConfig}
+            isSimulatedMode={isSimulatedMode}
+            onToggleSimulatedMode={setIsSimulatedMode}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
           />
         )}
 
@@ -336,7 +401,7 @@ export default function App() {
         theme={theme}
         isOpen={isGmailModalOpen}
         onClose={() => setIsGmailModalOpen(false)}
-        currentUserEmail={userEmail || 'iit2022032@iiitl.ac.in'}
+        currentUserEmail={userEmail}
         isGranted={isGmailGranted}
         onToggleGrant={setIsGmailGranted}
       />
@@ -347,6 +412,20 @@ export default function App() {
         onClose={() => setIsFirebaseModalOpen(false)}
         theme={theme}
         userEmail={userEmail}
+      />
+
+      {/* SMTP and Delivery Channel Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        smtpConfig={smtpConfig}
+        onUpdateSmtpConfig={setSmtpConfig}
+        isSimulatedMode={isSimulatedMode}
+        onToggleSimulatedMode={setIsSimulatedMode}
+        schedule={schedule}
+        onUpdateSchedule={setSchedule}
+        theme={theme}
+        currentUserEmail={userEmail}
       />
     </div>
   );

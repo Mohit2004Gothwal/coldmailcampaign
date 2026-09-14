@@ -16,10 +16,12 @@ import {
   Flame,
   CheckCircle2,
   X,
+  Settings,
 } from 'lucide-react';
 import { parseBulkEmails } from '../utils/bulkEmailParser';
 import { SAMPLE_150_EMAILS } from '../data/sampleBulkEmails';
 import { DEFAULT_SAMPLE_RESUME } from '../data/sampleResume';
+import { SmtpConfig } from '../types';
 
 export interface EmailAttachment {
   id: string;
@@ -70,6 +72,12 @@ interface BulkMailComposerProps {
   initialSkipGmail?: boolean;
   initialRecipientsText?: string;
   onOpenFirebaseModal?: () => void;
+  smtpConfig?: SmtpConfig;
+  onUpdateSmtpConfig?: (config: SmtpConfig) => void;
+  isSimulatedMode?: boolean;
+  onToggleSimulatedMode?: (isSimulated: boolean) => void;
+  onOpenSettings?: () => void;
+  onOpenAuth?: () => void;
 }
 
 export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
@@ -90,24 +98,32 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
   initialSkipGmail,
   initialRecipientsText,
   onOpenFirebaseModal,
+  smtpConfig,
+  onUpdateSmtpConfig,
+  isSimulatedMode = true,
+  onToggleSimulatedMode,
+  onOpenSettings,
+  onOpenAuth,
 }) => {
   const isDark = theme === 'dark';
 
-  // Saved template memory
+  // Saved template memory (defaults to empty string)
   const [savedSubject, setSavedSubject] = useState<string>(() => {
-    return localStorage.getItem('bm_saved_subject') || DEFAULT_SAVED_SUBJECT;
+    return localStorage.getItem('bm_saved_subject') || '';
   });
   const [savedBody, setSavedBody] = useState<string>(() => {
-    return localStorage.getItem('bm_saved_body') || DEFAULT_SAVED_BODY;
+    return localStorage.getItem('bm_saved_body') || '';
   });
 
-  // Current inputs with initial synchronization
-  const [subject, setSubject] = useState<string>(
-    () => initialSubject || localStorage.getItem('bm_saved_subject') || DEFAULT_SAVED_SUBJECT
-  );
-  const [body, setBody] = useState<string>(
-    () => initialBody || localStorage.getItem('bm_saved_body') || DEFAULT_SAVED_BODY
-  );
+  // Current inputs with initial synchronization (starts empty unless explicitly passed or saved)
+  const [subject, setSubject] = useState<string>(() => {
+    if (initialSubject !== undefined) return initialSubject;
+    return localStorage.getItem('bm_saved_subject') || '';
+  });
+  const [body, setBody] = useState<string>(() => {
+    if (initialBody !== undefined) return initialBody;
+    return localStorage.getItem('bm_saved_body') || '';
+  });
 
   // Recipient input box - initialize with pending emails or passed recipients so it is never blank
   const [rawRecipientsText, setRawRecipientsText] = useState<string>(() => {
@@ -340,14 +356,31 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
   // Sends a single test email without altering the bulk queue
   const handleSendSingleTest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userEmail) {
+      alert('Authentication required: Users cannot send emails without signing in or entering a sender identity. Please log in first.');
+      if (onOpenAuth) onOpenAuth();
+      return;
+    }
+
     if (!testRecipient.trim() || !testRecipient.includes('@')) {
       alert('Please enter a valid destination email address for the test.');
       return;
     }
 
+    if (!isSimulatedMode && (!smtpConfig?.host || !smtpConfig?.user || !smtpConfig?.pass)) {
+      alert(
+        'Live SMTP mode is active, but your SMTP credentials (Host, User, and App Password) are not configured. Please configure SMTP in Delivery Settings first, or toggle to Sandbox Simulation mode.'
+      );
+      if (onOpenSettings) onOpenSettings();
+      return;
+    }
+
     setIsSendingTest(true);
     setTestSuccessMessage(null);
-    addLog(`🧪 Initiating single test email dispatch to ${testRecipient}...`, 'info');
+    addLog(
+      `🧪 Initiating single test email dispatch to ${testRecipient} (${isSimulatedMode ? 'Sandbox Simulated' : 'Live Real SMTP'})...`,
+      'info'
+    );
 
     const effectiveResume = resume || DEFAULT_SAMPLE_RESUME;
     const attachmentsList = [
@@ -355,20 +388,24 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
       ...(transcript ? [transcript] : []),
     ];
 
+    const effectiveFromName = smtpConfig?.fromName || (userEmail ? userEmail.split('@')[0] : 'Mohit Kumar');
+    const effectiveFromEmail = smtpConfig?.fromEmail || smtpConfig?.user || userEmail || '';
+
     try {
       const response = await fetch('/api/smtp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          smtpConfig: smtpConfig || undefined,
+          isSimulated: isSimulatedMode,
           email: {
             to: testRecipient.trim(),
-            subject: subject || DEFAULT_SAVED_SUBJECT,
-            body: body || DEFAULT_SAVED_BODY,
-            fromName: 'Mohit Kumar',
-            fromEmail: userEmail || 'iit2022032@iiitl.ac.in',
+            subject: subject || 'Test Outreach Email',
+            body: body || '<p>This is a test outreach message.</p>',
+            fromName: effectiveFromName,
+            fromEmail: effectiveFromEmail,
             attachments: attachmentsList,
           },
-          isSimulated: true,
         }),
       });
 
@@ -376,19 +413,21 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
 
       if (data.success) {
         addLog(
-          `✓ [Test Mail Sent] Successfully delivered to ${testRecipient} (Attached: ${effectiveResume.name})`,
+          `✓ [Test Mail Sent] Successfully delivered to ${testRecipient} ${isSimulatedMode ? '(Sandbox Mode)' : '(Real SMTP Delivery)'} (Attached: ${effectiveResume.name})`,
           'success'
         );
 
         onMailSent({
           email: testRecipient.trim(),
-          subject: subject || DEFAULT_SAVED_SUBJECT,
-          body: body || DEFAULT_SAVED_BODY,
+          subject: subject || 'Test Outreach Email',
+          body: body || '<p>This is a test outreach message.</p>',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           isGmailSkipped: false,
         });
 
-        setTestSuccessMessage(`Test email delivered to ${testRecipient}! Bulk queue left intact.`);
+        setTestSuccessMessage(
+          `Test email delivered to ${testRecipient}! ${isSimulatedMode ? '(Sandbox Mode)' : '(Real SMTP Delivery)'}`
+        );
         setTimeout(() => {
           setIsTestModalOpen(false);
           setTestSuccessMessage(null);
@@ -408,6 +447,12 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
 
   // ================= BULK SENDING ENGINE =================
   const handleStartSending = async () => {
+    if (!userEmail) {
+      alert('Authentication required: Users cannot send emails without signing in or entering a sender identity. Please log in first.');
+      if (onOpenAuth) onOpenAuth();
+      return;
+    }
+
     if (!subject.trim()) {
       alert('Please enter an email Subject before sending.');
       return;
@@ -415,6 +460,14 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
 
     if (!body.trim()) {
       alert('Please enter the HTML/Text Email Body before sending.');
+      return;
+    }
+
+    if (!isSimulatedMode && (!smtpConfig?.host || !smtpConfig?.user || !smtpConfig?.pass)) {
+      alert(
+        'Live SMTP mode is active, but your SMTP credentials (Host, User, and App Password) are not configured. Please configure SMTP in Delivery Settings first, or toggle to Sandbox Simulation mode.'
+      );
+      if (onOpenSettings) onOpenSettings();
       return;
     }
 
@@ -448,7 +501,10 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
     sendingRef.current = true;
     setActiveQueueCount(targetEmails.length);
 
-    addLog(`🚀 Commencing bulk mail dispatch to ${targetEmails.length} recipients...`, 'info');
+    addLog(
+      `🚀 Commencing bulk mail dispatch to ${targetEmails.length} recipients (${isSimulatedMode ? 'Sandbox Mode' : 'Live Real SMTP'})...`,
+      'info'
+    );
 
     // Create a mutable copy of the remaining queue
     const queue = [...targetEmails];
@@ -487,19 +543,23 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
             ...(transcript ? [transcript] : []),
           ];
 
+          const effectiveFromName = smtpConfig?.fromName || (userEmail ? userEmail.split('@')[0] : 'Mohit Kumar');
+          const effectiveFromEmail = smtpConfig?.fromEmail || smtpConfig?.user || userEmail || '';
+
           const response = await fetch('/api/smtp/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              smtpConfig: smtpConfig || undefined,
+              isSimulated: isSimulatedMode,
               email: {
                 to: currentRecipient,
                 subject,
                 body,
-                fromName: 'Mohit Kumar',
-                fromEmail: userEmail || 'iit2022032@iiitl.ac.in',
+                fromName: effectiveFromName,
+                fromEmail: effectiveFromEmail,
                 attachments: attachmentsList,
               },
-              isSimulated: true,
             }),
           });
 
@@ -622,29 +682,73 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
             </div>
           </div>
 
-          {/* 1. Gmail Permission Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-            <button
-              type="button"
-              onClick={onOpenGmailModal}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-2 ${
-                isGmailGranted
-                  ? 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-cyan-500/20'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Grant Permission (Gmail)</span>
-            </button>
+          {/* 1. Gmail Permission Banner & SMTP Mode Control */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border border-slate-800/80 bg-slate-900/30">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={onOpenGmailModal}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center space-x-1.5 ${
+                  isGmailGranted
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-cyan-500/20'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Grant Permission (Gmail)</span>
+              </button>
 
-            <div className={`flex items-center space-x-2 text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>
-                Signed in as{' '}
-                <strong className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {userEmail || 'iit2022032@iiitl.ac.in'}
-                </strong>
+              <div className={`flex items-center space-x-2 text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>
+                  Sender:{' '}
+                  <strong className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {userEmail || 'Active Outreach Account'}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Delivery Mode & SMTP Status */}
+            <div className="flex items-center space-x-2">
+              <span
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                  isSimulatedMode
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
+                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                }`}
+              >
+                {isSimulatedMode ? 'Sandbox Mode' : 'Live Real SMTP'}
               </span>
+
+              {onToggleSimulatedMode && (
+                <button
+                  type="button"
+                  onClick={() => onToggleSimulatedMode(!isSimulatedMode)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {isSimulatedMode ? 'Enable Real SMTP' : 'Switch to Sandbox'}
+                </button>
+              )}
+
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className={`p-1.5 rounded-lg border transition-colors ${
+                    isDark
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                  title="Configure SMTP Delivery Settings"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -652,24 +756,40 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Subject</label>
-              <button
-                type="button"
-                onClick={handleUsePreviousSubject}
-                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                  isDark
-                    ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                }`}
-              >
-                Use previous
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubject(DEFAULT_SAVED_SUBJECT);
+                    setBody(DEFAULT_SAVED_BODY);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'bg-blue-950/40 hover:bg-blue-900/50 text-blue-400 border-blue-800/60'
+                      : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-200'
+                  }`}
+                >
+                  Load Sample Template
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUsePreviousSubject}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Use previous
+                </button>
+              </div>
             </div>
 
             <input
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="Subject"
+              placeholder="e.g. Partnership Inquiry / Engineering Application"
               className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors border ${
                 isDark
                   ? 'bg-[#0a0f1d] border-slate-800 hover:border-slate-700 text-slate-100 placeholder-slate-500'
@@ -678,7 +798,7 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
             />
 
             <p className={`text-[11px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Saved subject: <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{savedSubject}</span>
+              Saved subject: <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{savedSubject || '(none saved yet)'}</span>
             </p>
           </div>
 
@@ -688,24 +808,37 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
               <label className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 HTML Body (you may paste html)
               </label>
-              <button
-                type="button"
-                onClick={handleUsePreviousBody}
-                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                  isDark
-                    ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                }`}
-              >
-                Use previous
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setBody(DEFAULT_SAVED_BODY)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'bg-blue-950/40 hover:bg-blue-900/50 text-blue-400 border-blue-800/60'
+                      : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-200'
+                  }`}
+                >
+                  Load Sample Template
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUsePreviousBody}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
+                    isDark
+                      ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Use previous
+                </button>
+              </div>
             </div>
 
             <textarea
               rows={8}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Body"
+              placeholder="<p>Dear Hiring Team,</p><p>I am reaching out regarding...</p>"
               className={`w-full px-4 py-3 rounded-xl text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors leading-relaxed border ${
                 isDark
                   ? 'bg-[#0a0f1d] border-slate-800 hover:border-slate-700 text-slate-200 placeholder-slate-500'
@@ -1102,10 +1235,34 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
                 />
               </div>
 
-              <div className="p-3 rounded-xl border border-slate-800 bg-slate-900/50 space-y-1.5 text-xs text-slate-300">
+              <div className="p-3 rounded-xl border border-slate-800 bg-slate-900/50 space-y-2 text-xs text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Delivery Channel:</span>
+                  <div className="flex items-center space-x-1.5">
+                    <span
+                      className={`font-semibold px-2 py-0.5 rounded-md ${
+                        isSimulatedMode ? 'text-amber-400 bg-amber-500/10' : 'text-emerald-400 bg-emerald-500/10'
+                      }`}
+                    >
+                      {isSimulatedMode ? 'Sandbox Simulation' : `Real SMTP (${smtpConfig?.host || 'Configured'})`}
+                    </span>
+                    {onOpenSettings && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsTestModalOpen(false);
+                          onOpenSettings();
+                        }}
+                        className="text-blue-400 hover:text-blue-300 underline text-[11px] ml-1"
+                      >
+                        Change
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Subject:</span>
-                  <span className="font-semibold truncate max-w-[200px]">{subject}</span>
+                  <span className="font-semibold truncate max-w-[200px]">{subject || '(No subject entered)'}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Attachment:</span>
