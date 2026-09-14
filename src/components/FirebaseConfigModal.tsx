@@ -330,7 +330,7 @@ service cloud.firestore {
                     type="password"
                     value={customApiKey}
                     onChange={(e) => setCustomApiKey(e.target.value)}
-                    placeholder="AIzaSy... (leave blank to use workspace API Key)"
+                    placeholder="Optional Web API Key"
                     className={`w-full px-3 py-2 rounded-xl text-xs font-mono border focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                       isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                     }`}

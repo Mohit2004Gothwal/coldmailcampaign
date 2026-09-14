@@ -145,17 +145,24 @@ export default function App() {
       setFirebaseConnected(connected);
     });
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user);
-      if (user) {
-        setUserEmail(user.email || 'user@example.com');
-        setUserId(user.uid);
-        setIsLoggedIn(true);
-        syncUserProfile(user).catch((err) => {
-          console.warn('User profile sync note:', err);
+    let unsubscribeAuth = () => {};
+    try {
+      if (auth && typeof auth.onAuthStateChanged === 'function') {
+        unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+          setFirebaseUser(user);
+          if (user) {
+            setUserEmail(user.email || 'user@example.com');
+            setUserId(user.uid);
+            setIsLoggedIn(true);
+            syncUserProfile(user).catch((err) => {
+              console.warn('User profile sync note:', err);
+            });
+          }
         });
       }
-    });
+    } catch (authSubErr) {
+      console.warn('Auth state subscription init note:', authSubErr);
+    }
 
     return () => unsubscribeAuth();
   }, []);

@@ -47,7 +47,19 @@ const app = initializeApp(firebaseConfig);
 
 // CRITICAL: Initialize Firestore using the configured database ID
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+
+let authInstance: ReturnType<typeof getAuth>;
+try {
+  // getAuth requires an apiKey if Auth is configured on the Firebase project
+  authInstance = getAuth(app);
+} catch (authInitError) {
+  console.warn('Firebase Auth initialization fallback (no apiKey or auth disabled):', authInitError);
+  authInstance = {
+    currentUser: null,
+    onAuthStateChanged: () => () => {},
+  } as unknown as ReturnType<typeof getAuth>;
+}
+export const auth = authInstance;
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
@@ -283,6 +295,12 @@ export async function signInWithGoogleSafe(): Promise<{
         error: 'Popup was blocked by your browser/iframe sandbox. Please use 1-click test sign-in below.',
       };
     }
+    if (errorObj?.code === 'auth/invalid-api-key' || errorObj?.code === 'auth/operation-not-allowed') {
+      return {
+        user: null,
+        error: 'Firebase Auth is pending activation for this project. Please use 1-click test sign-in below to continue immediately.',
+      };
+    }
     return {
       user: null,
       error: errorObj?.message || 'Google authentication encountered an unexpected error.',
@@ -296,10 +314,14 @@ export async function signInWithPresetOrEmail(
   displayName?: string
 ): Promise<{ user: User | null; uid: string }> {
   try {
-    let currentUser = auth.currentUser;
-    if (!currentUser) {
-      const cred = await signInAnonymously(auth);
-      currentUser = cred.user;
+    let currentUser = auth?.currentUser;
+    if (!currentUser && auth && typeof auth === 'object') {
+      try {
+        const cred = await signInAnonymously(auth);
+        currentUser = cred.user;
+      } catch (anonErr) {
+        console.info('Firebase anonymous auth note:', anonErr);
+      }
     }
     if (currentUser) {
       try {
