@@ -40,7 +40,7 @@ export const BulkMailerHeader: React.FC<BulkMailerHeaderProps> = ({
   isLiveDelivery = false,
   isSmtpConfigured = false,
 }) => {
-  const initial = (userEmail?.[0] || 'I').toUpperCase();
+  const initial = (userEmail?.[0] || 'U').toUpperCase();
   const isDark = theme === 'dark';
 
   return (

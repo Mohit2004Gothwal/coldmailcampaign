@@ -146,7 +146,7 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
 
   // Single Test Email Modal state
   const [isTestModalOpen, setIsTestModalOpen] = useState<boolean>(false);
-  const [testRecipient, setTestRecipient] = useState<string>(() => userEmail || 'gothwalmohit03@gmail.com');
+  const [testRecipient, setTestRecipient] = useState<string>(() => userEmail || 'emailid@example.com');
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null);
 
@@ -1228,7 +1228,7 @@ export const BulkMailComposer: React.FC<BulkMailComposerProps> = ({
                   required
                   value={testRecipient}
                   onChange={(e) => setTestRecipient(e.target.value)}
-                  placeholder="e.g. gothwalmohit03@gmail.com"
+                  placeholder="e.g. emailid@example.com"
                   className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono border focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                   }`}

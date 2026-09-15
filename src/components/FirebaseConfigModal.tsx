@@ -34,16 +34,16 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
 
   // Custom configuration state stored in localStorage
   const [customProjectId, setCustomProjectId] = useState<string>(() => {
-    return localStorage.getItem('bm_firebase_project_id') || 'coldmail-compagin-v1';
+    return localStorage.getItem('bm_firebase_project_id') || firebaseConfig.projectId || 'spheric-scene-3n96h';
   });
   const [customDatabaseId, setCustomDatabaseId] = useState<string>(() => {
-    return localStorage.getItem('bm_firebase_database_id') || '(default)';
+    return localStorage.getItem('bm_firebase_database_id') || firebaseConfig.firestoreDatabaseId || '(default)';
   });
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
     return localStorage.getItem('bm_firebase_api_key') || '';
   });
   const [customAuthDomain, setCustomAuthDomain] = useState<string>(() => {
-    return localStorage.getItem('bm_firebase_auth_domain') || 'coldmail-compagin-v1.firebaseapp.com';
+    return localStorage.getItem('bm_firebase_auth_domain') || firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`;
   });
 
   const [activeMode, setActiveMode] = useState<'custom' | 'provisioned'>(() => {
@@ -146,12 +146,12 @@ service cloud.firestore {
             <div>
               <div className="flex items-center space-x-2">
                 <h3 className="font-bold text-base">Firestore Database Settings</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                  coldmail-compagin-v1
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
+                  {customProjectId}
                 </span>
               </div>
               <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Configure database synchronization, audit collections, and project rules
+                Database ID: <span className="font-mono text-blue-400">{customDatabaseId}</span> • Project: <span className="font-mono text-emerald-400">{customProjectId}</span>
               </p>
             </div>
           </div>
@@ -211,9 +211,9 @@ service cloud.firestore {
               >
                 <div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-400">Target Project</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-400">Active Project</span>
                     <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">
-                      coldmail-compagin-v1
+                      {customProjectId}
                     </span>
                   </div>
                   <p className="text-xs mt-1 opacity-80">
@@ -222,7 +222,7 @@ service cloud.firestore {
                 </div>
 
                 <a
-                  href="https://console.firebase.google.com/project/coldmail-compagin-v1/firestore"
+                  href={`https://console.firebase.google.com/project/${customProjectId}/firestore`}
                   target="_blank"
                   rel="noreferrer"
                   className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center space-x-1.5 self-start sm:self-auto shrink-0"

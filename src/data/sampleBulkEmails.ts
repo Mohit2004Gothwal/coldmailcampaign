@@ -184,7 +184,7 @@ export const DEFAULT_SAVED_BODY = `<!DOCTYPE html>
     Warm regards,<br/>
     <strong>Mohit Kumar</strong><br/>
     <span style="color: #64748b; font-size: 13px;">B.Tech Computer Science / Information Technology</span><br/>
-    <a href="mailto:gothwalmohit03@gmail.com" style="color: #2563eb; font-size: 13px;">gothwalmohit03@gmail.com</a>
+    <a href="mailto:emailid@example.com" style="color: #2563eb; font-size: 13px;">emailid@example.com</a>
   </p>
 </body>
 </html>`;
